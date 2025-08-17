@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>串珠圖產生器</title>
+    <style>
+        /* CSS 樣式 */
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f0f4f8; /* 柔和的背景色 */
+            color: #334e68;
+            position: relative;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 25px;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls label {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .controls input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            border: 1px solid #c4d0da;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+        
+        .controls input[type="number"]:focus {
+            outline: none;
+            border-color: #38a169;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background-color: #38a169; /* 綠色按鈕 */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .controls button:hover {
+            background-color: #2f855a;
+            transform: translateY(-2px);
+        }
+        
+        /* 畫布清除按鈕 */
+        #clear-button {
+            background-color: #e53e3e;
+        }
+        #clear-button:hover {
+            background-color: #c53030;
+        }
+        
+        /* 新增的undo/redo按鈕樣式 */
+        #undo-button, #redo-button {
+            background-color: #4a5568;
+        }
+        #undo-button:hover, #redo-button:hover {
+            background-color: #2d3748;
+        }
+        
+        /* 禁用按鈕樣式 */
+        #undo-button:disabled, #redo-button:disabled {
+            background-color: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 將畫布容器改為 Flexbox 垂直排列 */
+        #grid-container {
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #334e68;
+            background-color: #e2e8f0;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            position: relative; /* 為了圖片和網格的疊加 */
+        }
+
+        /* 圖片畫布和網格疊加 */
+        #image-canvas, #grid-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #grid-overlay {
+            display: flex;
+            flex-direction: column;
+            z-index: 5;
+        }
+
+        /* 每一行都使用 Flexbox 水平排列 */
+        .row {
+            display: flex;
+            flex-direction: row;
+        }
+        
+        /* 隔行縮排現在直接在 JS 中設定，此處的 CSS 已移除 */
+
+        .cell {
+            width: 15px; /* 格子大小 */
+            height: 15px;
+            border: 1px solid #a0aec0; /* 細邊框 */
+            box-sizing: border-box; /* 邊框不影響大小 */
+            background-color: transparent;
+            cursor: crosshair;
+            transition: background-color 0.1s ease-in-out;
+        }
+
+        .cell.colored {
+            background-color: #e53e3e; /* 預設塗色顏色：紅色 */
+        }
+        
+        .palette {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap; /* 換行顯示 */
+            justify-content: center;
+        }
+        
+        .color-box {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .color-box.selected {
+            border-color: #334e68;
+            transform: scale(1.1);
+        }
+        
+        /* 自訂顏色選擇器的樣式 */
+        #custom-color-box {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid #334e68;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+
+        #custom-color-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0; /* 隱藏原生的顏色輸入框 */
+            cursor: pointer;
+        }
+
+        #custom-color-box.selected {
+            transform: scale(1.1);
+        }
+        
+        .tool-box {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            background-color: #cbd5e0;
+            font-weight: bold;
+            color: #4a5568;
+            transition: background-color 0.2s, transform 0.2s, border-color 0.2s;
+        }
+
+        .tool-box.selected {
+            border-color: #334e68;
+            background-color: #a0aec0;
+        }
+
+        #output-button {
+            margin-top: 30px;
+            padding: 12px 25px;
+            background-color: #007bff; /* 藍色按鈕 */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            display: none; /* 預設隱藏 */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        #output-button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        /* 橡皮擦預覽框的樣式 */
+        #eraser-preview {
+            position: absolute;
+            pointer-events: none; /* 讓滑鼠事件穿透 */
+            border: 2px dashed #334e68;
+            background-color: rgba(255, 255, 255, 0.5);
+            z-index: 10;
+            display: none; /* 預設隱藏 */
+        }
+    </style>
+</head>
+<body>
+
+    <h1>串珠圖產生器</h1>
+
+    <div class="controls">
+        <label for="width">寬度：</label>
+        <input type="number" id="width" value="30" min="10" max="200">
+        <label for="height">高度：</label>
+        <input type="number" id="height" value="30" min="10" max="200">
+        <button id="create-button">建立畫布</button>
+        <button id="clear-button">清除畫布</button>
+        <button id="undo-button" disabled>回上一步</button>
+        <button id="redo-button" disabled>回下一步</button>
+    </div>
+
+    <!-- 圖片上傳與控制區塊 -->
+    <div class="controls">
+        <label for="image-upload">上傳圖片：</label>
+        <input type="file" id="image-upload" accept="image/*">
+        
+        <label for="opacity-slider">透明度：</label>
+        <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="1">
+        
+        <button id="toggle-image-button">隱藏圖片</button>
+    </div>
+
+    <div class="palette">
+        <!-- 繪圖工具 -->
+        <div class="color-box selected" style="background-color: #e53e3e;" data-color="#e53e3e"></div>
+        <div class="color-box" style="background-color: #f6ad55;" data-color="#f6ad55"></div>
+        <div class="color-box" style="background-color: #4299e1;" data-color="#4299e1"></div>
+        <div class="color-box" style="background-color: #319795;" data-color="#319795"></div>
+        <div class="color-box" style="background-color: #805ad5;" data-color="#805ad5"></div>
+        <div class="color-box" style="background-color: #000000;" data-color="#805ad5"></div>
+        
+        <!-- 新增自訂顏色選擇器 -->
+        <div id="custom-color-box" class="color-box" data-color="#000000">
+            <input type="color" id="custom-color-input" value="#000000">
+        </div>
+        
+        <!-- 橡皮擦工具 -->
+        <div id="eraser-tool" class="tool-box">
+            <span>橡皮擦</span>
+            <input type="number" id="eraser-radius" value="1" min="1" max="10" style="width: 40px; text-align: center;">
+            <label for="eraser-radius">半徑</label>
+        </div>
+    </div>
+
+    <!-- 畫布容器，用於堆疊圖片和網格 -->
+    <div id="grid-container">
+        <!-- 圖片畫布，位於底部 -->
+        <canvas id="image-canvas"></canvas>
+        <!-- 網格容器，疊加在圖片畫布上方 -->
+        <div id="grid-overlay">
+            <!-- 橡皮擦預覽框，用於顯示橡皮擦範圍 -->
+            <div id="eraser-preview"></div>
+        </div>
+    </div>
+
+    <button id="output-button">下載圖片</button>
+
+    <!-- 匯入 html2canvas 函式庫，用於將網頁內容轉為圖片 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        // JavaScript 邏輯
+        const widthInput = document.getElementById('width');
+        const heightInput = document.getElementById('height');
+        const createButton = document.getElementById('create-button');
+        const clearButton = document.getElementById('clear-button');
+        const undoButton = document.getElementById('undo-button');
+        const redoButton = document.getElementById('redo-button');
+        const gridContainer = document.getElementById('grid-container');
+        const outputButton = document.getElementById('output-button');
+        const colorPalette = document.querySelector('.palette');
+        const customColorInput = document.getElementById('custom-color-input');
+        const customColorBox = document.getElementById('custom-color-box');
+        const eraserTool = document.getElementById('eraser-tool');
+        const eraserRadiusInput = document.getElementById('eraser-radius');
+        const imageUpload = document.getElementById('image-upload');
+        const opacitySlider = document.getElementById('opacity-slider');
+        const toggleImageButton = document.getElementById('toggle-image-button');
+
+        const imageCanvas = document.getElementById('image-canvas');
+        const imageCtx = imageCanvas.getContext('2d');
+        const gridOverlay = document.getElementById('grid-overlay');
+        const eraserPreview = document.getElementById('eraser-preview');
+
+        const CELL_SIZE = 15; // 格子大小
+        const MAX_HISTORY_SIZE = 50; // 最大歷史記錄數量
+
+        let selectedTool = 'color'; // 追蹤目前使用的工具：'color' 或 'eraser'
+        let selectedColor = '#e53e3e'; // 預設顏色
+        let isDrawing = false; // 追蹤滑鼠是否按下
+        let uploadedImage = null; // 儲存上傳的圖片物件
+        let isImageVisible = true; // 圖片是否可見
+
+        // 歷史記錄功能變數
+        let history = [];
+        let historyIndex = -1;
+
+        /**
+         * 儲存目前網格的狀態。
+         */
+        function saveState() {
+            // 如果歷史記錄已滿，移除最舊的記錄
+            if (history.length > MAX_HISTORY_SIZE) {
+                history.shift();
+                historyIndex--;
+            }
+
+            // 清除從當前索引開始的所有歷史記錄（用於新的操作）
+            if (historyIndex < history.length - 1) {
+                history = history.slice(0, historyIndex + 1);
+            }
+
+            // 擷取當前網格狀態
+            const currentState = Array.from(gridOverlay.querySelectorAll('.row')).map(row => {
+                return Array.from(row.querySelectorAll('.cell')).map(cell => cell.style.backgroundColor);
+            });
+            history.push(currentState);
+            historyIndex = history.length - 1;
+
+            updateHistoryButtons();
+        }
+
+        /**
+         * 根據歷史記錄索引應用網格狀態。
+         * @param {number} index - 歷史記錄的索引。
+         */
+        function applyState(index) {
+            const state = history[index];
+            if (!state) return;
+
+            const rows = gridOverlay.querySelectorAll('.row');
+            state.forEach((rowState, i) => {
+                const cells = rows[i].querySelectorAll('.cell');
+                rowState.forEach((cellColor, j) => {
+                    cells[j].style.backgroundColor = cellColor;
+                });
+            });
+            updateHistoryButtons();
+        }
+
+        /**
+         * 更新 undo/redo 按鈕的啟用狀態。
+         */
+        function updateHistoryButtons() {
+            undoButton.disabled = historyIndex <= 0;
+            redoButton.disabled = historyIndex >= history.length - 1;
+        }
+
+        /**
+         * 根據輸入的寬度和高度建立串珠網格。
+         * @param {number} width - 網格的寬度。
+         * @param {number} height - 網格的高度。
+         */
+        function createGrid(width, height) {
+            gridOverlay.innerHTML = ''; // 清空舊的網格
+            gridOverlay.appendChild(eraserPreview); // 將預覽框重新插入
+
+            // 調整畫布容器的尺寸，以容納最寬的交錯行
+            const containerWidth = width * CELL_SIZE + (CELL_SIZE / 2);
+            const containerHeight = height * CELL_SIZE;
+            gridContainer.style.width = `${containerWidth}px`;
+            gridContainer.style.height = `${containerHeight}px`;
+
+            // 設定圖片畫布和網格容器的尺寸以匹配
+            imageCanvas.width = containerWidth;
+            imageCanvas.height = containerHeight;
+            gridOverlay.style.width = `${containerWidth}px`;
+            gridOverlay.style.height = `${containerHeight}px`;
+            
+            // 迴圈建立每一行
+            for (let i = 0; i < height; i++) {
+                const row = document.createElement('div');
+                row.classList.add('row');
+                row.dataset.row = i; // 為每一行設定資料屬性
+                
+                // 偶數行向右偏移，現在由 JS 控制
+                if (i % 2 !== 0) {
+                    row.style.marginLeft = `${CELL_SIZE / 2}px`;
+                }
+                
+                // 迴圈建立每一行的格子
+                for (let j = 0; j < width; j++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.col = j; // 為每個格子設定資料屬性
+                    row.appendChild(cell);
+                }
+                gridOverlay.appendChild(row);
+            }
+            outputButton.style.display = 'block';
+            
+            // 重新繪製圖片
+            updateImage();
+            
+            // 建立新畫布時重置歷史記錄
+            history = [];
+            historyIndex = -1;
+            saveState();
+        }
+
+        /**
+         * 處理格子的繪畫邏輯。
+         * @param {HTMLElement} cell - 正在互動的格子元素。
+         */
+        function colorCell(cell) {
+            if (!cell || !cell.classList.contains('cell')) return;
+
+            if (selectedTool === 'color') {
+                cell.style.backgroundColor = selectedColor;
+            } else if (selectedTool === 'eraser') {
+                const radius = parseInt(eraserRadiusInput.value);
+                const col = parseInt(cell.dataset.col);
+                const row = parseInt(cell.closest('.row').dataset.row);
+                
+                // 計算需要清除的格子範圍
+                for (let i = row - radius + 1; i < row + radius; i++) {
+                    // 檢查 row 元素是否存在
+                    const targetRow = gridOverlay.children[i + 1]; // +1 因為預覽框是第一個子元素
+                    if (targetRow) {
+                        for (let j = col - radius + 1; j < col + radius; j++) {
+                            const targetCell = targetRow.children[j];
+                            if (targetCell) {
+                                targetCell.style.backgroundColor = 'transparent';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * 更新橡皮擦預覽框的位置和大小。
+         * @param {MouseEvent} e - 滑鼠事件物件。
+         */
+        function updateEraserPreview(e) {
+            if (selectedTool === 'eraser' && e.target.classList.contains('cell')) {
+                const radius = parseInt(eraserRadiusInput.value);
+                // 根據半徑計算預覽框的尺寸
+                const size = (radius * 2 - 1) * CELL_SIZE;
+                
+                // 確保預覽框可見
+                eraserPreview.style.display = 'block';
+                
+                // 更新大小
+                eraserPreview.style.width = `${size}px`;
+                eraserPreview.style.height = `${size}px`;
+                
+                // 取得目標格子的位置
+                const cell = e.target;
+                const cellRect = cell.getBoundingClientRect();
+                const gridRect = gridOverlay.getBoundingClientRect();
+                
+                // 計算格子相對於畫布容器的偏移量
+                const cellX = cellRect.left - gridRect.left;
+                const cellY = cellRect.top - gridRect.top;
+                
+                // 將預覽框的中心點與格子的中心點對齊
+                const offsetX = cellX + (CELL_SIZE / 2) - (size / 2);
+                const offsetY = cellY + (CELL_SIZE / 2) - (size / 2);
+
+                eraserPreview.style.left = `${offsetX}px`;
+                eraserPreview.style.top = `${offsetY}px`;
+            } else {
+                eraserPreview.style.display = 'none';
+            }
+        }
+        
+        /**
+         * 處理上傳的圖片並繪製到畫布上。
+         */
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    uploadedImage = img;
+                    updateImage();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        /**
+         * 在圖片畫布上繪製圖片，並考慮透明度。
+         */
+        function updateImage() {
+            // 清空畫布
+            imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+
+            if (uploadedImage && isImageVisible) {
+                const opacity = parseFloat(opacitySlider.value);
+                imageCtx.globalAlpha = opacity;
+                
+                // 計算比例以填充畫布，同時保持圖片比例
+                const scale = Math.min(imageCanvas.width / uploadedImage.width, imageCanvas.height / uploadedImage.height);
+                const newWidth = uploadedImage.width * scale;
+                const newHeight = uploadedImage.height * scale;
+                const offsetX = (imageCanvas.width - newWidth) / 2;
+                const offsetY = (imageCanvas.height - newHeight) / 2;
+
+                imageCtx.drawImage(uploadedImage, offsetX, offsetY, newWidth, newHeight);
+                imageCtx.globalAlpha = 1.0; // 重置透明度
+            }
+        }
+
+        /**
+         * 將網格轉換為圖片並下載。
+         */
+        function downloadImage() {
+            // 創建一個臨時畫布，將圖片和網格畫在一起
+            const finalCanvas = document.createElement('canvas');
+            const finalCtx = finalCanvas.getContext('2d');
+            finalCanvas.width = imageCanvas.width;
+            finalCanvas.height = imageCanvas.height;
+
+            // 繪製背景圖片
+            if (uploadedImage && isImageVisible) {
+                finalCtx.drawImage(imageCanvas, 0, 0);
+            }
+            
+            // 使用 html2canvas 截取 grid-overlay 的內容
+            html2canvas(gridOverlay, {
+                scale: 2, // 提高解析度
+                backgroundColor: null, // 讓背景透明
+            }).then(gridCanvas => {
+                // 將網格畫布疊加到最終畫布上
+                finalCtx.drawImage(gridCanvas, 0, 0);
+                
+                // 建立一個臨時的下載連結
+                const link = document.createElement('a');
+                link.download = '串珠圖.png';
+                link.href = finalCanvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+
+        /**
+         * 處理工具選擇的狀態。
+         */
+        function updateToolSelection(selectedElement) {
+            document.querySelectorAll('.color-box, .tool-box').forEach(box => {
+                box.classList.remove('selected');
+            });
+            selectedElement.classList.add('selected');
+        }
+
+        // 事件監聽器
+        createButton.addEventListener('click', () => {
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+            if (width > 0 && height > 0) {
+                createGrid(width, height);
+            } else {
+                // 使用自定義訊息框替代 alert
+                const message = '寬度和高度必須為正數！';
+                const messageBox = document.createElement('div');
+                messageBox.textContent = message;
+                messageBox.style.cssText = `
+                    position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
+                    padding: 20px; background-color: #fff; border-radius: 10px;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 1000;
+                `;
+                document.body.appendChild(messageBox);
+                setTimeout(() => messageBox.remove(), 2000);
+            }
+        });
+
+        clearButton.addEventListener('click', () => {
+            createGrid(widthInput.value, heightInput.value);
+        });
+        
+        // 新增 undo 和 redo 事件監聽器
+        undoButton.addEventListener('click', () => {
+            if (historyIndex > 0) {
+                historyIndex--;
+                applyState(historyIndex);
+            }
+        });
+        
+        redoButton.addEventListener('click', () => {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                applyState(historyIndex);
+            }
+        });
+
+        colorPalette.addEventListener('click', (e) => {
+            const element = e.target.closest('.color-box, .tool-box');
+            if (element) {
+                updateToolSelection(element);
+                if (element.id === 'eraser-tool') {
+                    selectedTool = 'eraser';
+                } else {
+                    selectedTool = 'color';
+                    selectedColor = element.dataset.color;
+                }
+            }
+        });
+
+        customColorInput.addEventListener('input', (e) => {
+            updateToolSelection(customColorBox);
+            selectedTool = 'color';
+            selectedColor = e.target.value;
+            customColorBox.style.backgroundColor = selectedColor;
+        });
+        
+        // 確保自訂顏色盒子在點擊時也選擇
+        customColorBox.addEventListener('click', () => {
+            updateToolSelection(customColorBox);
+            selectedTool = 'color';
+        });
+
+        // 當半徑改變時，更新預覽框大小
+        eraserRadiusInput.addEventListener('input', (e) => {
+            if (selectedTool === 'eraser') {
+                const radius = parseInt(e.target.value);
+                const size = (radius * 2 - 1) * CELL_SIZE;
+                eraserPreview.style.width = `${size}px`;
+                eraserPreview.style.height = `${size}px`;
+            }
+        });
+
+        gridOverlay.addEventListener('mousedown', (e) => {
+            // 在開始繪圖前先儲存當前狀態，方便撤銷整次操作
+            saveState();
+            isDrawing = true;
+            colorCell(e.target);
+        });
+
+        gridOverlay.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+        
+        // 離開畫布區域時停止繪圖並隱藏預覽框
+        gridOverlay.addEventListener('mouseleave', () => {
+            isDrawing = false;
+            eraserPreview.style.display = 'none';
+        });
+
+        gridOverlay.addEventListener('mousemove', (e) => {
+            if (isDrawing) {
+                colorCell(e.target);
+            }
+            updateEraserPreview(e);
+        });
+        
+        // 進入畫布區域時顯示預覽框
+        gridOverlay.addEventListener('mouseenter', (e) => {
+             updateEraserPreview(e);
+        });
+        
+        // 圖片上傳事件
+        imageUpload.addEventListener('change', handleImageUpload);
+        
+        // 透明度滑桿事件
+        opacitySlider.addEventListener('input', updateImage);
+        
+        // 圖片開關按鈕事件
+        toggleImageButton.addEventListener('click', () => {
+            isImageVisible = !isImageVisible;
+            toggleImageButton.textContent = isImageVisible ? '隱藏圖片' : '顯示圖片';
+            updateImage();
+        });
+
+        outputButton.addEventListener('click', downloadImage);
+
+        // 頁面載入時建立預設畫布
+        window.onload = () => {
+            createGrid(widthInput.value, heightInput.value);
+            // 初始設定自訂顏色框的背景色
+            customColorBox.style.backgroundColor = customColorInput.value;
+            // 初始選中第一個顏色
+            updateToolSelection(document.querySelector('.color-box'));
+        };
+    </script>
+</body>
+</html>
