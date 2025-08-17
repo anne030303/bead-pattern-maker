@@ -29,6 +29,13 @@
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
+        
+        /* 讓手機版控制項換行 */
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+            }
+        }
 
         .controls label {
             font-size: 16px;
@@ -78,11 +85,9 @@
         /* 新增的undo/redo按鈕樣式 */
         #undo-button, #redo-button {
             background-color: #6c8c9e; /* 柔和的藍灰色 */
-            border-radius: 2px;
         }
         #undo-button:hover, #redo-button:hover {
             background-color: #5c7788;
-            border-radius: 2px;
         }
         
         /* 禁用按鈕樣式 */
@@ -92,7 +97,7 @@
             transform: none;
         }
 
-        /* 將畫布容器改為 Flexbox 垂直排列 */
+        /* 畫布容器，讓它盡可能寬 */
         #grid-container {
             display: flex;
             flex-direction: column;
@@ -100,7 +105,9 @@
             background-color: #e2e8f0;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
             border-radius: 8px;
-            position: relative; /* 為了圖片和網格的疊加 */
+            position: relative;
+            max-width: 95vw; /* 確保畫布不會超出螢幕邊緣 */
+            overflow: auto; /* 允許滾動 */
         }
 
         /* 圖片畫布和網格疊加 */
@@ -108,6 +115,8 @@
             position: absolute;
             top: 0;
             left: 0;
+            max-width: 100%;
+            height: auto;
         }
 
         #grid-overlay {
@@ -122,17 +131,12 @@
             flex-direction: row;
         }
         
-        /* 隔行縮排現在直接在 JS 中設定，此處的 CSS 已移除 */
-
         .cell {
-            width: 15px; /* 格子大小 */
-            height: 15px;
             border: 1px solid #a0aec0; /* 細邊框 */
             box-sizing: border-box; /* 邊框不影響大小 */
             background-color: transparent;
             cursor: crosshair;
             transition: background-color 0.1s ease-in-out;
-            /* 讓觸控更靈敏 */
             touch-action: none; 
         }
 
@@ -302,8 +306,6 @@
 
     <button id="output-button">下載圖片</button>
 
-    <!-- 匯入 html2canvas 函式庫，用於將網頁內容轉為圖片 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script>
         // JavaScript 邏輯
         const widthInput = document.getElementById('width');
@@ -328,7 +330,6 @@
         const gridOverlay = document.getElementById('grid-overlay');
         const eraserPreview = document.getElementById('eraser-preview');
 
-        const CELL_SIZE = 15; // 格子大小
         const MAX_HISTORY_SIZE = 50; // 最大歷史記錄數量
 
         let selectedTool = 'color'; // 追蹤目前使用的工具：'color' 或 'eraser'
@@ -336,6 +337,7 @@
         let isDrawing = false; // 追蹤滑鼠或觸控是否按下
         let uploadedImage = null; // 儲存上傳的圖片物件
         let isImageVisible = true; // 圖片是否可見
+        let CELL_SIZE; // 動態計算的格子大小
 
         // 歷史記錄功能變數
         let history = [];
@@ -345,18 +347,15 @@
          * 儲存目前網格的狀態。
          */
         function saveState() {
-            // 如果歷史記錄已滿，移除最舊的記錄
             if (history.length > MAX_HISTORY_SIZE) {
                 history.shift();
                 historyIndex--;
             }
 
-            // 清除從當前索引開始的所有歷史記錄（用於新的操作）
             if (historyIndex < history.length - 1) {
                 history = history.slice(0, historyIndex + 1);
             }
 
-            // 擷取當前網格狀態
             const currentState = Array.from(gridOverlay.querySelectorAll('.row')).map(row => {
                 return Array.from(row.querySelectorAll('.cell')).map(cell => cell.style.backgroundColor);
             });
@@ -398,47 +397,49 @@
          * @param {number} height - 網格的高度。
          */
         function createGrid(width, height) {
-            gridOverlay.innerHTML = ''; // 清空舊的網格
-            gridOverlay.appendChild(eraserPreview); // 將預覽框重新插入
+            gridOverlay.innerHTML = '';
+            gridOverlay.appendChild(eraserPreview);
 
-            // 調整畫布容器的尺寸，以容納最寬的交錯行
-            const containerWidth = width * CELL_SIZE + (CELL_SIZE / 2);
-            const containerHeight = height * CELL_SIZE;
-            gridContainer.style.width = `${containerWidth}px`;
-            gridContainer.style.height = `${containerHeight}px`;
+            // 新的計算邏輯：使用視窗寬度來主動設定畫布容器的寬度
+            const availableWidth = window.innerWidth * 0.95;
+            CELL_SIZE = Math.floor(availableWidth / (width + 0.5));
+            CELL_SIZE = Math.max(CELL_SIZE, 5); // 確保格子有最小尺寸
+
+            // 設定畫布容器的尺寸以確保它在繪製前就有正確的空間
+            const finalWidth = width * CELL_SIZE + (CELL_SIZE / 2);
+            const finalHeight = height * CELL_SIZE;
+            gridContainer.style.width = `${finalWidth}px`;
+            gridContainer.style.height = `${finalHeight}px`;
 
             // 設定圖片畫布和網格容器的尺寸以匹配
-            imageCanvas.width = containerWidth;
-            imageCanvas.height = containerHeight;
-            gridOverlay.style.width = `${containerWidth}px`;
-            gridOverlay.style.height = `${containerHeight}px`;
+            imageCanvas.width = finalWidth;
+            imageCanvas.height = finalHeight;
+            gridOverlay.style.width = `${finalWidth}px`;
+            gridOverlay.style.height = `${finalHeight}px`;
             
-            // 迴圈建立每一行
             for (let i = 0; i < height; i++) {
                 const row = document.createElement('div');
                 row.classList.add('row');
-                row.dataset.row = i; // 為每一行設定資料屬性
+                row.dataset.row = i;
                 
-                // 偶數行向右偏移，現在由 JS 控制
                 if (i % 2 !== 0) {
                     row.style.marginLeft = `${CELL_SIZE / 2}px`;
                 }
                 
-                // 迴圈建立每一行的格子
                 for (let j = 0; j < width; j++) {
                     const cell = document.createElement('div');
                     cell.classList.add('cell');
-                    cell.dataset.col = j; // 為每個格子設定資料屬性
+                    cell.dataset.col = j;
+                    cell.style.width = `${CELL_SIZE}px`;
+                    cell.style.height = `${CELL_SIZE}px`;
                     row.appendChild(cell);
                 }
                 gridOverlay.appendChild(row);
             }
             outputButton.style.display = 'block';
             
-            // 重新繪製圖片
             updateImage();
             
-            // 建立新畫布時重置歷史記錄
             history = [];
             historyIndex = -1;
             saveState();
@@ -460,8 +461,7 @@
                 
                 // 計算需要清除的格子範圍
                 for (let i = row - radius + 1; i < row + radius; i++) {
-                    // 檢查 row 元素是否存在
-                    const targetRow = gridOverlay.children[i + 1]; // +1 因為預覽框是第一個子元素
+                    const targetRow = gridOverlay.children[i + 1];
                     if (targetRow) {
                         for (let j = col - radius + 1; j < col + radius; j++) {
                             const targetCell = targetRow.children[j];
@@ -483,25 +483,19 @@
             
             if (selectedTool === 'eraser' && targetElement && targetElement.classList.contains('cell')) {
                 const radius = parseInt(eraserRadiusInput.value);
-                // 根據半徑計算預覽框的尺寸
                 const size = (radius * 2 - 1) * CELL_SIZE;
                 
-                // 確保預覽框可見
                 eraserPreview.style.display = 'block';
                 
-                // 更新大小
                 eraserPreview.style.width = `${size}px`;
                 eraserPreview.style.height = `${size}px`;
                 
-                // 取得目標格子的位置
                 const cellRect = targetElement.getBoundingClientRect();
                 const gridRect = gridOverlay.getBoundingClientRect();
                 
-                // 計算格子相對於畫布容器的偏移量
                 const cellX = cellRect.left - gridRect.left;
                 const cellY = cellRect.top - gridRect.top;
                 
-                // 將預覽框的中心點與格子的中心點對齊
                 const offsetX = cellX + (CELL_SIZE / 2) - (size / 2);
                 const offsetY = cellY + (CELL_SIZE / 2) - (size / 2);
 
@@ -535,14 +529,12 @@
          * 在圖片畫布上繪製圖片，並考慮透明度。
          */
         function updateImage() {
-            // 清空畫布
             imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
 
             if (uploadedImage && isImageVisible) {
                 const opacity = parseFloat(opacitySlider.value);
                 imageCtx.globalAlpha = opacity;
                 
-                // 計算比例以填充畫布，同時保持圖片比例
                 const scale = Math.min(imageCanvas.width / uploadedImage.width, imageCanvas.height / uploadedImage.height);
                 const newWidth = uploadedImage.width * scale;
                 const newHeight = uploadedImage.height * scale;
@@ -550,7 +542,7 @@
                 const offsetY = (imageCanvas.height - newHeight) / 2;
 
                 imageCtx.drawImage(uploadedImage, offsetX, offsetY, newWidth, newHeight);
-                imageCtx.globalAlpha = 1.0; // 重置透明度
+                imageCtx.globalAlpha = 1.0;
             }
         }
 
@@ -558,31 +550,50 @@
          * 將網格轉換為圖片並下載。
          */
         function downloadImage() {
-            // 創建一個臨時畫布，將圖片和網格畫在一起
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
             const finalCanvas = document.createElement('canvas');
             const finalCtx = finalCanvas.getContext('2d');
-            finalCanvas.width = imageCanvas.width;
-            finalCanvas.height = imageCanvas.height;
-
-            // 繪製背景圖片
-            if (uploadedImage && isImageVisible) {
-                finalCtx.drawImage(imageCanvas, 0, 0);
-            }
             
-            // 使用 html2canvas 截取 grid-overlay 的內容
-            html2canvas(gridOverlay, {
-                scale: 2, // 提高解析度
-                backgroundColor: null, // 讓背景透明
-            }).then(gridCanvas => {
-                // 將網格畫布疊加到最終畫布上
-                finalCtx.drawImage(gridCanvas, 0, 0);
+            const finalWidth = width * CELL_SIZE + (CELL_SIZE / 2);
+            const finalHeight = height * CELL_SIZE;
+            finalCanvas.width = finalWidth;
+            finalCanvas.height = finalHeight;
+
+            if (uploadedImage && isImageVisible) {
+                const scale = Math.min(finalWidth / uploadedImage.width, finalHeight / uploadedImage.height);
+                const newWidth = uploadedImage.width * scale;
+                const newHeight = uploadedImage.height * scale;
+                const offsetX = (finalWidth - newWidth) / 2;
+                const offsetY = (finalHeight - newHeight) / 2;
                 
-                // 建立一個臨時的下載連結
-                const link = document.createElement('a');
-                link.download = '串珠圖.png';
-                link.href = finalCanvas.toDataURL('image/png');
-                link.click();
+                finalCtx.globalAlpha = parseFloat(opacitySlider.value);
+                finalCtx.drawImage(uploadedImage, offsetX, offsetY, newWidth, newHeight);
+                finalCtx.globalAlpha = 1.0;
+            }
+
+            const allCells = document.querySelectorAll('.cell');
+            allCells.forEach(cell => {
+                const color = cell.style.backgroundColor;
+                if (color && color !== 'transparent') {
+                    const row = parseInt(cell.closest('.row').dataset.row);
+                    const col = parseInt(cell.dataset.col);
+                    
+                    let x = col * CELL_SIZE;
+                    if (row % 2 !== 0) {
+                        x += CELL_SIZE / 2;
+                    }
+                    const y = row * CELL_SIZE;
+
+                    finalCtx.fillStyle = color;
+                    finalCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+                }
             });
+
+            const link = document.createElement('a');
+            link.download = '串珠圖.png';
+            link.href = finalCanvas.toDataURL('image/png');
+            link.click();
         }
 
         /**
@@ -602,7 +613,6 @@
             if (width > 0 && height > 0) {
                 createGrid(width, height);
             } else {
-                // 使用自定義訊息框替代 alert
                 const message = '寬度和高度必須為正數！';
                 const messageBox = document.createElement('div');
                 messageBox.textContent = message;
@@ -617,10 +627,14 @@
         });
 
         clearButton.addEventListener('click', () => {
-            createGrid(widthInput.value, heightInput.value);
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+            // 加入延遲，確保清除後畫布有足夠時間重繪
+            setTimeout(() => {
+                createGrid(width, height);
+            }, 50); // 微小延遲
         });
         
-        // 新增 undo 和 redo 事件監聽器
         undoButton.addEventListener('click', () => {
             if (historyIndex > 0) {
                 historyIndex--;
@@ -638,7 +652,6 @@
         colorPalette.addEventListener('click', (e) => {
             const element = e.target.closest('.color-box, .tool-box, button');
             if (element) {
-                // 只有當點擊的是工具或顏色時才更新選取狀態
                 if (element.classList.contains('color-box') || element.id === 'eraser-tool') {
                     updateToolSelection(element);
                     if (element.id === 'eraser-tool') {
@@ -658,13 +671,11 @@
             customColorBox.style.backgroundColor = selectedColor;
         });
         
-        // 確保自訂顏色盒子在點擊時也選擇
         customColorBox.addEventListener('click', () => {
             updateToolSelection(customColorBox);
             selectedTool = 'color';
         });
 
-        // 當半徑改變時，更新預覽框大小
         eraserRadiusInput.addEventListener('input', (e) => {
             if (selectedTool === 'eraser') {
                 const radius = parseInt(e.target.value);
@@ -675,7 +686,6 @@
         });
 
         gridOverlay.addEventListener('mousedown', (e) => {
-            // 在開始繪圖前先儲存當前狀態，方便撤銷整次操作
             saveState();
             isDrawing = true;
             colorCell(e.target);
@@ -685,7 +695,6 @@
             isDrawing = false;
         });
         
-        // 離開畫布區域時停止繪圖並隱藏預覽框
         gridOverlay.addEventListener('mouseleave', () => {
             isDrawing = false;
             eraserPreview.style.display = 'none';
@@ -698,20 +707,19 @@
             updateEraserPreview(e);
         });
         
-        // 進入畫布區域時顯示預覽框
         gridOverlay.addEventListener('mouseenter', (e) => {
              updateEraserPreview(e);
         });
         
         // ============== 新增觸控事件處理 ==============
         gridOverlay.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 防止滾動等預設行為
-            saveState(); // 觸控開始時儲存狀態
+            e.preventDefault();
+            saveState();
             isDrawing = true;
             const touch = e.touches[0];
             const targetCell = document.elementFromPoint(touch.clientX, touch.clientY);
             colorCell(targetCell);
-        }, { passive: false }); // 使用非被動模式來允許 preventDefault
+        }, { passive: false });
 
         gridOverlay.addEventListener('touchmove', (e) => {
             e.preventDefault();
@@ -727,13 +735,10 @@
         });
         // ===========================================
 
-        // 圖片上傳事件
         imageUpload.addEventListener('change', handleImageUpload);
         
-        // 透明度滑桿事件
         opacitySlider.addEventListener('input', updateImage);
         
-        // 圖片開關按鈕事件
         toggleImageButton.addEventListener('click', () => {
             isImageVisible = !isImageVisible;
             toggleImageButton.textContent = isImageVisible ? '隱藏圖片' : '顯示圖片';
@@ -741,15 +746,24 @@
         });
 
         outputButton.addEventListener('click', downloadImage);
+        
+        window.addEventListener('resize', () => {
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+            if (width > 0 && height > 0) {
+                createGrid(width, height);
+            }
+        });
 
-        // 頁面載入時建立預設畫布
-        window.onload = () => {
-            createGrid(widthInput.value, heightInput.value);
-            // 初始設定自訂顏色框的背景色
-            customColorBox.style.backgroundColor = customColorInput.value;
-            // 初始選中第一個顏色
-            updateToolSelection(document.querySelector('.color-box'));
-        };
+        // 確保初始載入時，在 DOM 內容完全載入後再建立畫布
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                createGrid(widthInput.value, heightInput.value);
+                customColorBox.style.backgroundColor = customColorInput.value;
+                updateToolSelection(document.querySelector('.color-box'));
+            }, 50); // 微小延遲確保 DOM 和 CSS 渲染完成
+        });
+
     </script>
 </body>
 </html>
