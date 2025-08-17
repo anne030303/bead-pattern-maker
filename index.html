@@ -395,11 +395,24 @@
         }
 
         /**
+         * 獲取目前網格的顏色狀態。
+         * @returns {string[][]} - 包含所有格子顏色的二維陣列。
+         */
+        function getCurrentGridState() {
+            const rows = gridOverlay.querySelectorAll('.row');
+            if (rows.length === 0) return [];
+            return Array.from(rows).map(row => {
+                return Array.from(row.querySelectorAll('.cell')).map(cell => cell.style.backgroundColor);
+            });
+        }
+
+        /**
          * 根據輸入的寬度和高度建立串珠網格。
          * @param {number} width - 網格的寬度。
          * @param {number} height - 網格的高度。
+         * @param {string[][]} [initialState=null] - 可選的初始網格狀態，用於還原。
          */
-        function createGrid(width, height) {
+        function createGrid(width, height, initialState = null) {
             gridOverlay.innerHTML = '';
             gridOverlay.appendChild(eraserPreview);
 
@@ -420,6 +433,7 @@
             gridOverlay.style.width = `${finalWidth}px`;
             gridOverlay.style.height = `${finalHeight}px`;
             
+            const newGridState = [];
             for (let i = 0; i < height; i++) {
                 const row = document.createElement('div');
                 row.classList.add('row');
@@ -429,23 +443,38 @@
                     row.style.marginLeft = `${CELL_SIZE / 2}px`;
                 }
                 
+                const newRowState = [];
                 for (let j = 0; j < width; j++) {
                     const cell = document.createElement('div');
                     cell.classList.add('cell');
                     cell.dataset.col = j;
                     cell.style.width = `${CELL_SIZE}px`;
                     cell.style.height = `${CELL_SIZE}px`;
+                    
+                    // 如果提供了初始狀態，則還原顏色
+                    if (initialState && initialState[i] && initialState[i][j]) {
+                        cell.style.backgroundColor = initialState[i][j];
+                    }
+                    newRowState.push(cell.style.backgroundColor);
+
                     row.appendChild(cell);
                 }
                 gridOverlay.appendChild(row);
+                newGridState.push(newRowState);
             }
             outputButton.style.display = 'block';
             
             updateImage();
             
-            history = [];
-            historyIndex = -1;
-            saveState();
+            // 如果是新畫布，才建立歷史記錄
+            if (!initialState) {
+                history = [];
+                historyIndex = -1;
+                saveState();
+            } else {
+                // 如果是重新調整大小，不新增歷史記錄
+                updateHistoryButtons();
+            }
         }
 
         /**
@@ -552,8 +581,6 @@
                 const scale = Math.min(imageCanvas.width / rotatedWidth, imageCanvas.height / rotatedHeight);
                 const newWidth = rotatedWidth * scale;
                 const newHeight = rotatedHeight * scale;
-                const offsetX = (imageCanvas.width - newWidth) / 2;
-                const offsetY = (imageCanvas.height - newHeight) / 2;
 
                 // 儲存目前畫布狀態
                 imageCtx.save();
@@ -673,6 +700,7 @@
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
             if (width > 0 && height > 0) {
+                // 創建一個新的空畫布
                 createGrid(width, height);
             } else {
                 const message = '寬度和高度必須為正數！';
@@ -816,11 +844,15 @@
 
         outputButton.addEventListener('click', downloadImage);
         
+        // **重要的修復**
+        // 重新調整視窗大小時，不再直接清除畫布。
+        // 相反，我們將保存當前網格狀態，重新計算格子大小，然後重建網格並還原舊狀態。
         window.addEventListener('resize', () => {
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
             if (width > 0 && height > 0) {
-                createGrid(width, height);
+                const currentState = getCurrentGridState();
+                createGrid(width, height, currentState);
             }
         });
 
