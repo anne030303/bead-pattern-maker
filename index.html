@@ -77,10 +77,12 @@
         
         /* 新增的undo/redo按鈕樣式 */
         #undo-button, #redo-button {
-            background-color: #4a5568;
+            background-color: #6c8c9e; /* 柔和的藍灰色 */
+            border-radius: 2px;
         }
         #undo-button:hover, #redo-button:hover {
-            background-color: #2d3748;
+            background-color: #5c7788;
+            border-radius: 2px;
         }
         
         /* 禁用按鈕樣式 */
@@ -130,6 +132,8 @@
             background-color: transparent;
             cursor: crosshair;
             transition: background-color 0.1s ease-in-out;
+            /* 讓觸控更靈敏 */
+            touch-action: none; 
         }
 
         .cell.colored {
@@ -138,7 +142,7 @@
         
         .palette {
             display: flex;
-            gap: 10px;
+            gap: 15px; /* 增加間距 */
             margin-bottom: 20px;
             align-items: center;
             flex-wrap: wrap; /* 換行顯示 */
@@ -245,9 +249,6 @@
         <label for="height">高度：</label>
         <input type="number" id="height" value="30" min="10" max="200">
         <button id="create-button">建立畫布</button>
-        <button id="clear-button">清除畫布</button>
-        <button id="undo-button" disabled>回上一步</button>
-        <button id="redo-button" disabled>回下一步</button>
     </div>
 
     <!-- 圖片上傳與控制區塊 -->
@@ -281,6 +282,11 @@
             <input type="number" id="eraser-radius" value="1" min="1" max="10" style="width: 40px; text-align: center;">
             <label for="eraser-radius">半徑</label>
         </div>
+
+        <!-- 畫布控制按鈕 -->
+        <button id="clear-button">清除畫布</button>
+        <button id="undo-button" disabled>回上一步</button>
+        <button id="redo-button" disabled>回下一步</button>
     </div>
 
     <!-- 畫布容器，用於堆疊圖片和網格 -->
@@ -327,7 +333,7 @@
 
         let selectedTool = 'color'; // 追蹤目前使用的工具：'color' 或 'eraser'
         let selectedColor = '#e53e3e'; // 預設顏色
-        let isDrawing = false; // 追蹤滑鼠是否按下
+        let isDrawing = false; // 追蹤滑鼠或觸控是否按下
         let uploadedImage = null; // 儲存上傳的圖片物件
         let isImageVisible = true; // 圖片是否可見
 
@@ -473,7 +479,9 @@
          * @param {MouseEvent} e - 滑鼠事件物件。
          */
         function updateEraserPreview(e) {
-            if (selectedTool === 'eraser' && e.target.classList.contains('cell')) {
+            const targetElement = e.type.startsWith('mouse') ? e.target : document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+            
+            if (selectedTool === 'eraser' && targetElement && targetElement.classList.contains('cell')) {
                 const radius = parseInt(eraserRadiusInput.value);
                 // 根據半徑計算預覽框的尺寸
                 const size = (radius * 2 - 1) * CELL_SIZE;
@@ -486,8 +494,7 @@
                 eraserPreview.style.height = `${size}px`;
                 
                 // 取得目標格子的位置
-                const cell = e.target;
-                const cellRect = cell.getBoundingClientRect();
+                const cellRect = targetElement.getBoundingClientRect();
                 const gridRect = gridOverlay.getBoundingClientRect();
                 
                 // 計算格子相對於畫布容器的偏移量
@@ -629,14 +636,17 @@
         });
 
         colorPalette.addEventListener('click', (e) => {
-            const element = e.target.closest('.color-box, .tool-box');
+            const element = e.target.closest('.color-box, .tool-box, button');
             if (element) {
-                updateToolSelection(element);
-                if (element.id === 'eraser-tool') {
-                    selectedTool = 'eraser';
-                } else {
-                    selectedTool = 'color';
-                    selectedColor = element.dataset.color;
+                // 只有當點擊的是工具或顏色時才更新選取狀態
+                if (element.classList.contains('color-box') || element.id === 'eraser-tool') {
+                    updateToolSelection(element);
+                    if (element.id === 'eraser-tool') {
+                        selectedTool = 'eraser';
+                    } else {
+                        selectedTool = 'color';
+                        selectedColor = element.dataset.color;
+                    }
                 }
             }
         });
@@ -693,6 +703,30 @@
              updateEraserPreview(e);
         });
         
+        // ============== 新增觸控事件處理 ==============
+        gridOverlay.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 防止滾動等預設行為
+            saveState(); // 觸控開始時儲存狀態
+            isDrawing = true;
+            const touch = e.touches[0];
+            const targetCell = document.elementFromPoint(touch.clientX, touch.clientY);
+            colorCell(targetCell);
+        }, { passive: false }); // 使用非被動模式來允許 preventDefault
+
+        gridOverlay.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDrawing) {
+                const touch = e.touches[0];
+                const targetCell = document.elementFromPoint(touch.clientX, touch.clientY);
+                colorCell(targetCell);
+            }
+        }, { passive: false });
+
+        gridOverlay.addEventListener('touchend', () => {
+            isDrawing = false;
+        });
+        // ===========================================
+
         // 圖片上傳事件
         imageUpload.addEventListener('change', handleImageUpload);
         
