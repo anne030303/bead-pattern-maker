@@ -264,6 +264,7 @@
         <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="1">
         
         <button id="toggle-image-button">隱藏圖片</button>
+        <button id="rotate-button">向右旋轉 90°</button>
     </div>
 
     <div class="palette">
@@ -324,6 +325,7 @@
         const imageUpload = document.getElementById('image-upload');
         const opacitySlider = document.getElementById('opacity-slider');
         const toggleImageButton = document.getElementById('toggle-image-button');
+        const rotateButton = document.getElementById('rotate-button'); // 新增的旋轉按鈕
 
         const imageCanvas = document.getElementById('image-canvas');
         const imageCtx = imageCanvas.getContext('2d');
@@ -338,6 +340,7 @@
         let uploadedImage = null; // 儲存上傳的圖片物件
         let isImageVisible = true; // 圖片是否可見
         let CELL_SIZE; // 動態計算的格子大小
+        let rotationAngle = 0; // 新增：圖片旋轉角度，以度為單位
 
         // 歷史記錄功能變數
         let history = [];
@@ -518,6 +521,7 @@
                 const img = new Image();
                 img.onload = () => {
                     uploadedImage = img;
+                    rotationAngle = 0; // 重設旋轉角度
                     updateImage();
                 };
                 img.src = event.target.result;
@@ -526,22 +530,50 @@
         }
 
         /**
-         * 在圖片畫布上繪製圖片，並考慮透明度。
+         * 在圖片畫布上繪製圖片，並考慮透明度和旋轉。
          */
         function updateImage() {
             imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
 
             if (uploadedImage && isImageVisible) {
-                const opacity = parseFloat(opacitySlider.value);
-                imageCtx.globalAlpha = opacity;
+                imageCtx.globalAlpha = parseFloat(opacitySlider.value);
                 
-                const scale = Math.min(imageCanvas.width / uploadedImage.width, imageCanvas.height / uploadedImage.height);
-                const newWidth = uploadedImage.width * scale;
-                const newHeight = uploadedImage.height * scale;
+                const width = uploadedImage.width;
+                const height = uploadedImage.height;
+                let rotatedWidth = width;
+                let rotatedHeight = height;
+
+                if (rotationAngle === 90 || rotationAngle === 270) {
+                    rotatedWidth = height;
+                    rotatedHeight = width;
+                }
+
+                // 計算縮放比例和偏移量
+                const scale = Math.min(imageCanvas.width / rotatedWidth, imageCanvas.height / rotatedHeight);
+                const newWidth = rotatedWidth * scale;
+                const newHeight = rotatedHeight * scale;
                 const offsetX = (imageCanvas.width - newWidth) / 2;
                 const offsetY = (imageCanvas.height - newHeight) / 2;
 
-                imageCtx.drawImage(uploadedImage, offsetX, offsetY, newWidth, newHeight);
+                // 儲存目前畫布狀態
+                imageCtx.save();
+                
+                // 應用旋轉
+                imageCtx.translate(imageCanvas.width / 2, imageCanvas.height / 2);
+                imageCtx.rotate(rotationAngle * Math.PI / 180);
+                
+                // 繪製圖片
+                imageCtx.drawImage(
+                    uploadedImage, 
+                    -newWidth / 2, 
+                    -newHeight / 2, 
+                    newWidth, 
+                    newHeight
+                );
+
+                // 恢復畫布狀態
+                imageCtx.restore();
+                
                 imageCtx.globalAlpha = 1.0;
             }
         }
@@ -560,18 +592,32 @@
             finalCanvas.width = finalWidth;
             finalCanvas.height = finalHeight;
 
+            // 1. 繪製背景圖片 (含旋轉)
             if (uploadedImage && isImageVisible) {
-                const scale = Math.min(finalWidth / uploadedImage.width, finalHeight / uploadedImage.height);
-                const newWidth = uploadedImage.width * scale;
-                const newHeight = uploadedImage.height * scale;
-                const offsetX = (finalWidth - newWidth) / 2;
-                const offsetY = (finalHeight - newHeight) / 2;
-                
+                const imgWidth = uploadedImage.width;
+                const imgHeight = uploadedImage.height;
+                let rotatedImgWidth = imgWidth;
+                let rotatedImgHeight = imgHeight;
+
+                if (rotationAngle === 90 || rotationAngle === 270) {
+                    rotatedImgWidth = imgHeight;
+                    rotatedImgHeight = imgWidth;
+                }
+
+                const scale = Math.min(finalWidth / rotatedImgWidth, finalHeight / rotatedImgHeight);
+                const newWidth = rotatedImgWidth * scale;
+                const newHeight = rotatedImgHeight * scale;
+
                 finalCtx.globalAlpha = parseFloat(opacitySlider.value);
-                finalCtx.drawImage(uploadedImage, offsetX, offsetY, newWidth, newHeight);
+                finalCtx.save();
+                finalCtx.translate(finalWidth / 2, finalHeight / 2);
+                finalCtx.rotate(rotationAngle * Math.PI / 180);
+                finalCtx.drawImage(uploadedImage, -newWidth / 2, -newHeight / 2, newWidth, newHeight);
+                finalCtx.restore();
                 finalCtx.globalAlpha = 1.0;
             }
-
+            
+            // 2. 繪製串珠顏色
             const allCells = document.querySelectorAll('.cell');
             allCells.forEach(cell => {
                 const color = cell.style.backgroundColor;
@@ -589,6 +635,22 @@
                     finalCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
                 }
             });
+            
+            // 3. 繪製格線
+            finalCtx.strokeStyle = '#a0aec0'; // 與網格線顏色相同
+            finalCtx.lineWidth = 1;
+
+            for (let i = 0; i < height; i++) {
+                for (let j = 0; j < width; j++) {
+                    let x = j * CELL_SIZE;
+                    if (i % 2 !== 0) {
+                        x += CELL_SIZE / 2;
+                    }
+                    const y = i * CELL_SIZE;
+                    
+                    finalCtx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+                }
+            }
 
             const link = document.createElement('a');
             link.download = '串珠圖.png';
@@ -743,6 +805,13 @@
             isImageVisible = !isImageVisible;
             toggleImageButton.textContent = isImageVisible ? '隱藏圖片' : '顯示圖片';
             updateImage();
+        });
+        
+        rotateButton.addEventListener('click', () => {
+            if (uploadedImage) {
+                rotationAngle = (rotationAngle + 90) % 360;
+                updateImage();
+            }
         });
 
         outputButton.addEventListener('click', downloadImage);
