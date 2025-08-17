@@ -619,6 +619,10 @@
             finalCanvas.width = finalWidth;
             finalCanvas.height = finalHeight;
 
+            // 新增：繪製白色背景
+            finalCtx.fillStyle = '#FFFFFF';
+            finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
             // 1. 繪製背景圖片 (含旋轉)
             if (uploadedImage && isImageVisible) {
                 const imgWidth = uploadedImage.width;
